@@ -7,6 +7,8 @@
 # install with:
 # python -m pip install -r requirements.txt
 
+# note this file has to be downloaded and run on computer or else tkinter wont work b/c it doesn't have a display :(
+
 import math
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -18,6 +20,14 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import numpy as np
 
+# ---------- AESTHETICS ---------------
+# background
+bg = ""
+# header & buttons
+h_b = ""
+text = ""
+
+# -------------------------------------
 
 class SpringDamperApp(tk.Tk):
     def __init__(self):
@@ -50,6 +60,7 @@ class SpringDamperApp(tk.Tk):
         self.force_type.grid(row=row, column=1, pady=2)
         row += 1
 
+        # f is the constant the force oscillates around 
         ttk.Label(control_frame, text="Force Magnitude f (N)").grid(
             row=row, column=0, sticky=tk.W, pady=2
         )
@@ -235,7 +246,7 @@ class SpringDamperApp(tk.Tk):
         self.ax_pos.grid(True)
         self.ax_pos.legend()
 
-        self.ax_energy.plot(t, E_spring, "y-", label="Stored Spring Energy")
+        self.ax_energy.plot(t, E_spring, "b-", label="Stored Spring Energy")
         self.ax_energy.plot(t, E_damper, "r-", label="Dissipated Damper Energy")
         self.ax_energy.plot(t, W_input, "g-", label="Work Done by Applied Force")
         self.ax_energy.set_title("Energy & Work vs. Time")
