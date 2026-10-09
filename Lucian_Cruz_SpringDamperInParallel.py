@@ -13,13 +13,12 @@ import math
 import tkinter as tk
 # for bolding default font
 import tkinter.font as tkfont 
-from tkinter import ttk, messagebox
+from tkinter import ttk
 
 import matplotlib
 
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
-from matplotlib.figure import Rectangle
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import numpy as np
 
@@ -180,12 +179,13 @@ class SpringDamperApp(tk.Tk):
         plot_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         # constrained_layout b/c dont want plot and labels to overlap :P
         self.fig = Figure(figsize=(7, 7), dpi=100, constrained_layout=True)
-        # 3 subplots (VERTICAL)
-        self.ax_displacement = self.fig.add_subplot(311)
-        # Energy plot
-        self.ax_energy = self.fig.add_subplot(312)
-        # work plot
-        self.ax_work = self.fig.add_subplot(313)
+        # 2subplots (VERTICAL)
+        self.ax_displacement = self.fig.add_subplot(211)
+        # Energy & Work plot
+        # NOTE WORK AND ENERGY PLOTTED TOGETHER B/C its easier to see that
+        # Work = Espring + Edamper :D
+        self.ax_energy_work = self.fig.add_subplot(212)
+        
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -213,8 +213,7 @@ class SpringDamperApp(tk.Tk):
         # erase results plots 
         plots = [ 
             (self.ax_displacement, "Spring Displacement vs. Time"),
-            (self.ax_energy, "Energy vs. Time"),
-            (self.ax_work, "Work vs. Time"),
+            (self.ax_energy_work, "Energy and Work vs. Time"),
         ]
         for ax, title in plots:
             ax.clear()
@@ -392,7 +391,9 @@ class SpringDamperApp(tk.Tk):
         finally:
             self.is_running = False
             self.run_button.config(state="normal", text=self.run_text)
-    
+
+    # --------------------- MATH --------------------------------------------------------------------
+    # THIS FUNCTION DOES ALL THE MATH FOR THE SIMULATION !!!
     def simulate(self, f, w, k, b, x0, T_max):
         # time steps 
         dt = 0.005
@@ -416,40 +417,68 @@ class SpringDamperApp(tk.Tk):
         linear_spring = "Linear" in self.spring_type_entry.get()
 
         for i in range(n_steps):
+            # Magnitude of the force (like all of it)
+            # how hard system being pulled
             F_t = self.get_force(t[i], f, w)
+            # magnitude of the spring force
+            # linear: F_s = k*x
+            # nonlinear (cubic): F_s = k*x^3
+            # how hard spring pulls back
+
             F_s = self.get_spring_force(x_s[i], k)
             F_applied[i] = F_t
+
+            # note that F_d = F_t - F_s !! :P
+            # b*v_d = F_t - F_s
+            # v_d = (F_t -F_s)/b 
             v_d[i] = self.calc_velocity_d(F_s, F_t, b)
-            # new position = old position + velocity * dt
+        
+
+            # track new position 
+            # new position = old position + velocity*timestep
             x_s[i+1] = x_s[i] + v_d[i] *dt
 
+            # ENERGY STORED IN THE SPRING
             if linear_spring:
+                # Kinetic Energy for linear spring
+                # integral(k*x)dx = 1/2 * k *x^2
                 E_spring[i] = 0.5 *k*(x_s[i] ** 2)
             else:
+                # cubic spring
+                # integral(k*x^3)dx = 1/4 * k *x^4
                 E_spring[i] = 0.25 * k*(x_s[i] **4)
 
             if i > 0:
+                # CALCULATE WORK
+                # W = integral(F*v)dt
+                # Work = Force * distance over a tiny time step
+                # distance = v * dt 
+                # Work = F * v * dt
                 W_input[i] = W_input[i-1] + F_applied[i-1] * v_d[i-1] * dt
+                # Enewrgy Dissipated by damper 
+                # F_d = F_applied -F_spring
                 F_d = F_applied[i-1] - self.get_spring_force(x_s[i-1], k)
                 E_damper[i] = E_damper[i-1] + F_d * v_d[i-1] * dt
 
+        # DO calculations again b/c the loop only runs to n_steps -1 !!
         F_applied[-1] = self.get_force(t[-1], f, w)
         v_d[-1] = self.calc_velocity_d(self.get_spring_force(x_s[-1],k), F_applied[-1], b)
         if linear_spring: 
-            E_spring[-1] = 0.5*k*(x_s[i]**2)
+            E_spring[-1] = 0.5*k*(x_s[-1]**2)
         else: 
-            E_spring[-1] = 0.25 *k *(x_s[i]**4)
+            E_spring[-1] = 0.25 *k *(x_s[-1]**4)
 
         W_input[-1] = W_input[-2] + F_applied[-2] * v_d[-2]*dt
         F_d_last = F_applied[-2] - self.get_spring_force(x_s[-2], k)
         E_damper[-1] = E_damper[-2] + F_d_last * v_d[-2] * dt
 
+        # Work = spring energy + damper energy 
+        # W_input = (E_spring - E_spring[0] + E_damper)
         return t, x_s, E_spring, E_damper, W_input
 
     def plot_results(self, t, x_s, E_spring, E_damper, W_input):
         self.ax_displacement.clear()
-        self.ax_energy.clear()
-        self.ax_work.clear()
+        self.ax_energy_work.clear()
 
         # SPRING DISPLACEMENT PLOT 
         self.ax_displacement.plot(t, x_s, "g-", label="Spring Displacement x(t)")
@@ -459,22 +488,19 @@ class SpringDamperApp(tk.Tk):
         self.ax_displacement.grid(True)
         self.ax_displacement.legend()
 
-        # Energy Plot 
-        self.ax_energy.plot(t, E_spring, "b-", label="Stored Spring Energy")
-        self.ax_energy.plot(t, E_damper, "r-", label="Dissipated Damper Energy")
-        self.ax_energy.set_title("Energy vs. Time")
-        self.ax_energy.set_xlabel("Time (s)")
-        self.ax_energy.set_ylabel("Energy (J)")
-        self.ax_energy.grid(True)
-        self.ax_energy.legend()
+        # Energy & Work  Plot 
+        self.ax_energy_work.plot(t, W_input, "y-", linewidth=1.5, label="Work Done by Applied Force")
+        self.ax_energy_work.plot(t, E_spring, "b-", label="Stored Spring Energy")
+        self.ax_energy_work.plot(t, E_damper, "r-", label="Dissipated Damper Energy")
+        # -E_spring[0] accounts for the non-zero initial displacement if provided 
+        # b/c the spring holds energy before work is done by applied force
+        self.ax_energy_work.plot(t, E_spring - E_spring[0] + E_damper, "k--", linewidth=1.0, label="Spring + Damper (should match work)")
+        self.ax_energy_work.set_title("Energy & Work vs. Time")
+        self.ax_energy_work.set_xlabel("Time (s)")
+        self.ax_energy_work.set_ylabel("Energy (J)")
+        self.ax_energy_work.grid(True)
+        self.ax_energy_work.legend()
 
-        # WORK PLOT 
-        self.ax_work.plot(t, W_input, "y-", label="Work Done by Applied Force")
-        self.ax_work.set_title("Work vs. Time")
-        self.ax_work.set_xlabel("Time (s)")
-        self.ax_work.set_ylabel("Work (J)")   
-        self.ax_work.grid(True)
-        self.ax_work.legend()
 
         self.canvas.draw()
 
